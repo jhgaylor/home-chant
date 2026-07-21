@@ -1,0 +1,56 @@
+# Validates every chant app in apps/*/ on every push and PR: lints the
+# TypeScript source, rebuilds the Kubernetes manifests, and fails if the
+# committed k8s/manifests.yaml has drifted from what `chant build` produces.
+# The TypeScript in each app's src/ is the source of truth — this keeps the
+# generated YAML honest without anyone having to remember to rebuild it.
+name: validate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    outputs:
+      apps: ${{ steps.list.outputs.apps }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        run: |
+          apps=$(find apps -mindepth 1 -maxdepth 1 -type d -exec test -f '{}/package.json' \; -print | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "apps=$apps" >> "$GITHUB_OUTPUT"
+
+  validate:
+    needs: discover
+    if: needs.discover.outputs.apps != '[]'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        app: ${{ fromJson(needs.discover.outputs.apps) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Install dependencies
+        working-directory: ${{ matrix.app }}
+        run: npm ci
+
+      - name: Lint
+        working-directory: ${{ matrix.app }}
+        run: npx chant lint src
+
+      - name: Build and check for drift
+        working-directory: ${{ matrix.app }}
+        run: |
+          npx chant build src --lexicon k8s --format yaml --output k8s/manifests.yaml
+          if ! git diff --quiet -- k8s/manifests.yaml; then
+            echo "::error::k8s/manifests.yaml is out of date — run 'chant build src --lexicon k8s --format yaml --output k8s/manifests.yaml' in ${{ matrix.app }} and commit the result."
+            git diff -- k8s/manifests.yaml
+            exit 1
+          fi
