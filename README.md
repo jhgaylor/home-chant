@@ -7,29 +7,30 @@
 ```
 apps/
   <app-name>/
-    src/            # chant TypeScript source (Deployment, Service, ...)
+    src/
+      infra.ts        # chant TypeScript source (Deployment, Service, ...)
+      crds.ts          # generic CRD escape hatch (Traefik IngressRoute, ...)
     chant.config.ts
     package.json
     k8s/
       manifests.yaml     # `chant build` output — committed, not hand-edited
-      kustomization.yaml # references manifests.yaml + any hand-written CRDs
-      ingressroute.yaml  # Traefik IngressRoute (public apps only)
-      certificates.yaml  # cert-manager Certificate (public apps only)
+      kustomization.yaml # references manifests.yaml
 ```
 
-home-cloud's cluster uses Traefik `IngressRoute` CRDs and cert-manager `Certificate` CRDs rather than standard Kubernetes `Ingress` — chant's k8s lexicon doesn't model those CRDs yet, so they're hand-written alongside the chant-generated manifests and wired together in each app's `kustomization.yaml`.
+home-cloud's cluster uses Traefik `IngressRoute` CRDs rather than standard Kubernetes `Ingress`. chant's k8s lexicon doesn't ship a typed class for that CRD, so `src/crds.ts` declares it via chant's documented CRD-wrapper path (see the comment in that file) — it still comes out of `chant build` like everything else, nothing in `k8s/` is hand-written. cert-manager's `Certificate` *is* natively typed by the k8s lexicon, so it's just `new Certificate({...})` like any other resource.
 
 ## Adding a new app
 
 ```bash
 mkdir -p apps/<name>/src && cd apps/<name>
 npx chant init --lexicon k8s
-# edit src/infra.ts
+# edit src/infra.ts — copy apps/hello-chant/src/crds.ts over if you need
+# a CRD the k8s lexicon doesn't model (check its generated/index.d.ts first)
 npx chant lint src
 npx chant build src --lexicon k8s --format yaml --output k8s/manifests.yaml
 ```
 
-Then add `ingressroute.yaml` / `certificates.yaml` if the app needs a public hostname (see `apps/hello-chant/k8s/` for a working example), and onboard it to Flux by adding a `Kustomization` (pointing at `apps/<name>/k8s`) to `clusters/home/apps/home-chant.yaml` in the home-cloud repo — see [home-cloud's deploying-apps.md](https://github.com/jhgaylor/home-cloud/blob/main/docs/deploying-apps.md).
+Then onboard it to Flux by adding a `Kustomization` (pointing at `apps/<name>/k8s`) to `clusters/home/apps/home-chant.yaml` in the home-cloud repo — see [home-cloud's deploying-apps.md](https://github.com/jhgaylor/home-cloud/blob/main/docs/deploying-apps.md). Pick an app name that doesn't collide with anything already running in the `default` namespace — Deployment selectors are immutable, so a name collision blocks Flux from ever applying it.
 
 ## CI
 

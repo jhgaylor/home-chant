@@ -1,3 +1,16 @@
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: hello-chant-tls
+spec:
+  secretName: hello-chant-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - hello-chant.inevitable.fyi
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -36,6 +49,44 @@ spec:
             httpGet:
               path: /
               port: 80
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: hello-chant
+  labels:
+    app.kubernetes.io/name: hello-chant
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`hello-chant.inevitable.fyi`)
+      kind: Rule
+      services:
+        - name: hello-chant
+          port: 80
+  tls:
+    secretName: hello-chant-tls
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: hello-chant-http
+  labels:
+    app.kubernetes.io/name: hello-chant
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`hello-chant.inevitable.fyi`)
+      kind: Rule
+      middlewares:
+        - name: redirect-https
+      services:
+        - name: hello-chant
+          port: 80
 
 ---
 apiVersion: v1

@@ -1,6 +1,8 @@
-import { Deployment, Service, Container, Probe } from "@intentius/chant-lexicon-k8s";
+import { Deployment, Service, Certificate, Container, Probe } from "@intentius/chant-lexicon-k8s";
+import { IngressRoute } from "./crds.js";
 
 const name = "hello-chant";
+const hostname = "hello-chant.inevitable.fyi";
 const labels = { "app.kubernetes.io/name": name };
 
 export const deployment = new Deployment({
@@ -42,5 +44,44 @@ export const service = new Service({
   spec: {
     selector: labels,
     ports: [{ port: 80, targetPort: 80, protocol: "TCP", name: "http" }],
+  },
+});
+
+export const certificate = new Certificate({
+  metadata: { name: `${name}-tls` },
+  spec: {
+    secretName: `${name}-tls`,
+    issuerRef: { name: "letsencrypt-production", kind: "ClusterIssuer" },
+    dnsNames: [hostname],
+  },
+});
+
+export const ingressRoute = new IngressRoute({
+  metadata: { name, labels },
+  spec: {
+    entryPoints: ["websecure"],
+    routes: [
+      {
+        match: `Host(\`${hostname}\`)`,
+        kind: "Rule",
+        services: [{ name, port: 80 }],
+      },
+    ],
+    tls: { secretName: `${name}-tls` },
+  },
+});
+
+export const ingressRouteHttp = new IngressRoute({
+  metadata: { name: `${name}-http`, labels },
+  spec: {
+    entryPoints: ["web"],
+    routes: [
+      {
+        match: `Host(\`${hostname}\`)`,
+        kind: "Rule",
+        middlewares: [{ name: "redirect-https" }],
+        services: [{ name, port: 80 }],
+      },
+    ],
   },
 });
