@@ -1,18 +1,18 @@
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: hello-world
+  name: hello-chant
   labels:
-    app.kubernetes.io/name: hello-world
+    app.kubernetes.io/name: hello-chant
 spec:
   replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: hello-world
+      app.kubernetes.io/name: hello-chant
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: hello-world
+        app.kubernetes.io/name: hello-chant
     spec:
       containers:
         - name: app
@@ -41,15 +41,15 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: hello-world
+  name: hello-chant
   labels:
-    app.kubernetes.io/name: hello-world
+    app.kubernetes.io/name: hello-chant
   annotations:
     tailscale.com/expose: 'true'
-    tailscale.com/hostname: hello-world
+    tailscale.com/hostname: hello-chant
 spec:
   selector:
-    app.kubernetes.io/name: hello-world
+    app.kubernetes.io/name: hello-chant
   ports:
     - port: 80
       targetPort: 80

@@ -1,6 +1,6 @@
 import { Deployment, Service, Container, Probe } from "@intentius/chant-lexicon-k8s";
 
-const name = "hello-world";
+const name = "hello-chant";
 const labels = { "app.kubernetes.io/name": name };
 
 export const deployment = new Deployment({

@@ -29,7 +29,7 @@ npx chant lint src
 npx chant build src --lexicon k8s --format yaml --output k8s/manifests.yaml
 ```
 
-Then add `ingressroute.yaml` / `certificates.yaml` if the app needs a public hostname (see `apps/hello-world/k8s/` for a working example), and onboard it to Flux by adding a `Kustomization` (pointing at `apps/<name>/k8s`) to `clusters/home/apps/home-chant.yaml` in the home-cloud repo — see [home-cloud's deploying-apps.md](https://github.com/jhgaylor/home-cloud/blob/main/docs/deploying-apps.md).
+Then add `ingressroute.yaml` / `certificates.yaml` if the app needs a public hostname (see `apps/hello-chant/k8s/` for a working example), and onboard it to Flux by adding a `Kustomization` (pointing at `apps/<name>/k8s`) to `clusters/home/apps/home-chant.yaml` in the home-cloud repo — see [home-cloud's deploying-apps.md](https://github.com/jhgaylor/home-cloud/blob/main/docs/deploying-apps.md).
 
 ## CI
 

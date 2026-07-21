@@ -1,11 +1,11 @@
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: hello-world-tls
+  name: hello-chant-tls
 spec:
-  secretName: hello-world-tls
+  secretName: hello-chant-tls
   issuerRef:
     name: letsencrypt-production
     kind: ClusterIssuer
   dnsNames:
-    - hello-world.inevitable.fyi
+    - hello-chant.inevitable.fyi
