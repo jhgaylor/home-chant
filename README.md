@@ -30,7 +30,7 @@ npx chant lint src
 npx chant build src --lexicon k8s --format yaml --output k8s/manifests.yaml
 ```
 
-Then onboard it to Flux by adding a `Kustomization` (pointing at `apps/<name>/k8s`) to `clusters/home/apps/home-chant.yaml` in the home-cloud repo — see [home-cloud's deploying-apps.md](https://github.com/jhgaylor/home-cloud/blob/main/docs/deploying-apps.md). Pick an app name that doesn't collide with anything already running in the `default` namespace — Deployment selectors are immutable, so a name collision blocks Flux from ever applying it.
+Then onboard it to Flux by adding a `Kustomization` (pointing at `apps/<name>/k8s`) to `clusters/home/apps/home-chant.yaml` in the home-cloud repo — see [home-cloud's deploying-apps.md](https://github.com/jhgaylor/home-cloud/blob/main/docs/deploying-apps.md). Most apps share the `default` namespace (`targetNamespace: default`) — pick a name that doesn't collide with anything already running there, since Deployment selectors are immutable and a collision blocks Flux from ever applying it. A larger, multi-service app can instead get its own `targetNamespace` and emit its own `Namespace` resource from source (see `apps/posthog` for the pattern) — that sidesteps collisions entirely but needs its own cross-namespace RBAC, if any, hand-authored in home-cloud rather than expressed in the app's own manifests (chant's `targetNamespace` convention means an app's Kustomization can't reach outside its own namespace).
 
 ## CI
 
