@@ -9,7 +9,6 @@ apps/
   <app-name>/
     src/
       infra.ts        # chant TypeScript source (Deployment, Service, ...)
-      crds.ts          # generic CRD escape hatch (Traefik IngressRoute, ...)
     chant.config.ts
     package.json
     k8s/
@@ -17,15 +16,16 @@ apps/
       kustomization.yaml # references manifests.yaml
 ```
 
-home-cloud's cluster uses Traefik `IngressRoute` CRDs rather than standard Kubernetes `Ingress`. chant's k8s lexicon doesn't ship a typed class for that CRD, so `src/crds.ts` declares it via chant's documented CRD-wrapper path (see the comment in that file) — it still comes out of `chant build` like everything else, nothing in `k8s/` is hand-written. cert-manager's `Certificate` *is* natively typed by the k8s lexicon, so it's just `new Certificate({...})` like any other resource.
+home-cloud's cluster uses Traefik `IngressRoute` CRDs rather than standard Kubernetes `Ingress`. The k8s lexicon types those natively (`IngressRoute`, `IngressRouteTCP`, `IngressRouteUDP`, `Middleware`, `TraefikService`, ...), alongside the other operator CRDs this cluster runs — cert-manager's `Certificate`, Infisical's `InfisicalSecret`, CNPG's `Cluster`, and Flux's `GitRepository`/`Kustomization`/`HelmRelease`. They're all just `new X({...})` imported from `@intentius/chant-lexicon-k8s`; no CRD in home-cloud currently needs an escape hatch.
 
 ## Adding a new app
 
 ```bash
 mkdir -p apps/<name>/src && cd apps/<name>
 npx chant init --lexicon k8s
-# edit src/infra.ts — copy apps/hello-chant/src/crds.ts over if you need
-# a CRD the k8s lexicon doesn't model (check its generated/index.d.ts first)
+# edit src/infra.ts — see apps/hello-chant/src/infra.ts for the shape.
+# For an existing app, import it instead of hand-writing:
+#   npx chant import --kustomize ../../../home-cloud/k8s/<name> --output src
 npx chant lint src
 npx chant build src --lexicon k8s --format yaml --output k8s/manifests.yaml
 ```
