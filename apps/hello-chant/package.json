@@ -1,6 +1,6 @@
 {
   "name": "chant-project",
-  "version": "0.18.36",
+  "version": "0.41.20",
   "type": "module",
   "scripts": {
     "build": "chant build src --lexicon k8s",
@@ -8,8 +8,8 @@
     "dev": "chant build src --lexicon k8s --watch"
   },
   "dependencies": {
-    "@intentius/chant": "^0.18.36",
-    "@intentius/chant-lexicon-k8s": "^0.18.36"
+    "@intentius/chant": "^0.41.20",
+    "@intentius/chant-lexicon-k8s": "^0.41.20"
   },
   "devDependencies": {
     "typescript": "^5.0.0"
