@@ -1,0 +1,220 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: ntfy
+
+---
+apiVersion: secrets.infisical.com/v1alpha1
+kind: InfisicalSecret
+metadata:
+  name: ntfy-auth
+spec:
+  hostAPI: http://infisical.infisical.svc.cluster.local:8080
+  resyncInterval: 60
+  authentication:
+    kubernetesAuth:
+      identityId: '30e98c30-2e34-426c-ad22-2e3e5d734e88'
+      autoCreateServiceAccountToken: true
+      serviceAccountRef:
+        name: ntfy-infisical
+        namespace: ntfy
+      secretsScope:
+        projectSlug: ntfy-h-f-bm
+        envSlug: prod
+        secretsPath: /
+  managedSecretReference:
+    secretName: ntfy-auth
+    secretNamespace: ntfy
+    creationPolicy: Orphan
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: ntfy-tls
+spec:
+  secretName: ntfy-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - ntfy.inevitable.fyi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ntfy-data
+spec:
+  storageClassName: longhorn
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: '5Gi'
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ntfy
+  labels:
+    app: ntfy
+  annotations:
+    secrets.infisical.com/auto-reload: 'true'
+    configmap.reloader.stakater.com/reload: ntfy-server-config
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: ntfy
+  template:
+    metadata:
+      labels:
+        app: ntfy
+    spec:
+      containers:
+        - name: ntfy
+          image: binwiederhier/ntfy:v2.22.0
+          args:
+            - serve
+          ports:
+            - containerPort: 80
+              name: http
+          envFrom:
+            - secretRef:
+                name: ntfy-auth
+          volumeMounts:
+            - name: config
+              mountPath: /etc/ntfy
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/ntfy
+          resources:
+            requests:
+              cpu: '25m'
+              memory: '64Mi'
+            limits:
+              memory: '256Mi'
+          readinessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /v1/health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+      volumes:
+        - name: config
+          configMap:
+            name: ntfy-server-config
+        - name: data
+          persistentVolumeClaim:
+            claimName: ntfy-data
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ntfy
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`ntfy.inevitable.fyi`)
+      kind: Rule
+      services:
+        - name: ntfy
+          port: 80
+  tls:
+    secretName: ntfy-tls
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: ntfy-http
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`ntfy.inevitable.fyi`)
+      kind: Rule
+      middlewares:
+        - name: redirect-https
+          namespace: default
+      services:
+        - name: ntfy
+          port: 80
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ntfy-server-config
+data:
+  server.yml: |
+    # ntfy is reachable in two ways:
+    #   - Internally: http://ntfy.ntfy.svc.cluster.local  (Alertmanager → ntfy)
+    #   - Publicly:   https://ntfy.inevitable.fyi          (phone app subscribes here)
+    # base-url is the public origin; ntfy uses it when constructing
+    # attachment/link URLs and when verifying the Origin header.
+    base-url: "https://ntfy.inevitable.fyi"
+    listen-http: ":80"
+    
+    # Trust X-Forwarded-* headers from Traefik — otherwise every client
+    # appears as the in-cluster pod IP for rate-limiting and ACLs.
+    behind-proxy: true
+    
+    # Persisted state (PVC at /var/lib/ntfy).
+    cache-file: "/var/lib/ntfy/cache.db"
+    cache-duration: "12h"
+    auth-file: "/var/lib/ntfy/user.db"
+    attachment-cache-dir: "/var/lib/ntfy/attachments"
+    
+    # Lock everything down. No unauthenticated reads or writes — required
+    # because the server is on the public internet. Topic ACLs are
+    # granted per-user/per-token via `ntfy access` after bootstrap.
+    auth-default-access: "deny-all"
+    
+    # No browser UI — the phone app + curl + Alertmanager all hit the
+    # API (/v1/*, /{topic}/json, PUT /{topic}) with a bearer token,
+    # and serving the SPA on a public host just leaks what this is.
+    web-root: "disable"
+    
+    # iOS APNs proxy: Apple kills background long-polling, so the
+    # official ntfy iOS app only delivers push notifications via APNs.
+    # Self-hosted ntfy can't speak APNs directly, so we send a tiny
+    # wake-up ping (topic name only) to ntfy.sh, which forwards via
+    # APNs to the iOS app. The app then pulls the actual message from
+    # this server using its stored bearer token — content never leaves
+    # our infra. Android delivery is direct and unaffected.
+    upstream-base-url: "https://ntfy.sh"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ntfy
+  labels:
+    app: ntfy
+spec:
+  type: ClusterIP
+  selector:
+    app: ntfy
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ntfy-infisical
