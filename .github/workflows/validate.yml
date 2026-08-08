@@ -67,3 +67,12 @@ jobs:
             git diff -- k8s/manifests.yaml
             exit 1
           fi
+
+      # The control-plane project decides which apps Flux reconciles, and its
+      # Kustomization prunes — so a build that silently loses an app would
+      # delete that app and its storage. Asserted against what is on disk, so it
+      # keeps holding as apps are added.
+      - name: Control-plane invariants
+        if: matrix.app == 'clusters/home'
+        working-directory: ${{ matrix.app }}
+        run: npm run check

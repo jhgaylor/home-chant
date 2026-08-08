@@ -5,7 +5,8 @@
   "scripts": {
     "build": "chant build src --lexicon k8s",
     "lint": "chant lint src",
-    "dev": "chant build src --lexicon k8s --watch"
+    "dev": "chant build src --lexicon k8s --watch",
+    "check": "node check-control-plane.mjs"
   },
   "dependencies": {
     "@home-chant/flux-app": "file:../../packages/flux-app",
@@ -13,6 +14,7 @@
     "@intentius/chant-lexicon-k8s": "^0.41.20"
   },
   "devDependencies": {
+    "js-yaml": "^5.2.3",
     "typescript": "^5.0.0"
   }
 }
