@@ -2,12 +2,18 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: calcom
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: calcom
 
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: calcom-tls
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: calcom
 spec:
   secretName: calcom-tls
   issuerRef:
@@ -22,6 +28,8 @@ kind: Deployment
 metadata:
   name: calcom
   labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: calcom
     app: calcom
   annotations:
     secrets.infisical.com/auto-reload: 'true'
@@ -101,6 +109,9 @@ apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: calcom
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: calcom
 spec:
   entryPoints:
     - websecure
@@ -118,6 +129,9 @@ apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: calcom-http
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: calcom
 spec:
   entryPoints:
     - web
@@ -136,6 +150,9 @@ apiVersion: postgresql.cnpg.io/v1
 kind: Cluster
 metadata:
   name: calcom-pg
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: calcom
 spec:
   instances: 1
   bootstrap:
@@ -157,6 +174,9 @@ apiVersion: secrets.infisical.com/v1alpha1
 kind: InfisicalSecret
 metadata:
   name: calcom-secrets
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: calcom
 spec:
   hostAPI: http://infisical.infisical.svc.cluster.local:8080
   resyncInterval: 60
@@ -182,6 +202,8 @@ kind: Service
 metadata:
   name: calcom
   labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: calcom
     app: calcom
 spec:
   type: ClusterIP
@@ -197,3 +219,6 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: calcom-infisical
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: calcom

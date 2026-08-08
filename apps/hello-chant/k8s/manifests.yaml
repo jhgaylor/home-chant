@@ -2,6 +2,9 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: hello-chant-tls
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: hello-chant
 spec:
   secretName: hello-chant-tls
   issuerRef:
@@ -16,6 +19,8 @@ kind: Deployment
 metadata:
   name: hello-chant
   labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: hello-chant
     app.kubernetes.io/name: hello-chant
 spec:
   replicas: 1
@@ -56,6 +61,8 @@ kind: IngressRoute
 metadata:
   name: hello-chant
   labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: hello-chant
     app.kubernetes.io/name: hello-chant
 spec:
   entryPoints:
@@ -75,6 +82,8 @@ kind: IngressRoute
 metadata:
   name: hello-chant-http
   labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: hello-chant
     app.kubernetes.io/name: hello-chant
 spec:
   entryPoints:
@@ -94,6 +103,8 @@ kind: Service
 metadata:
   name: hello-chant
   labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: hello-chant
     app.kubernetes.io/name: hello-chant
   annotations:
     tailscale.com/expose: 'true'
