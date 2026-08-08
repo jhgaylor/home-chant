@@ -2,12 +2,18 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: ntfy
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: ntfy
 
 ---
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: ntfy-tls
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: ntfy
 spec:
   secretName: ntfy-tls
   issuerRef:
@@ -21,6 +27,9 @@ apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
   name: ntfy-data
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: ntfy
 spec:
   storageClassName: longhorn
   accessModes:
@@ -35,6 +44,8 @@ kind: Deployment
 metadata:
   name: ntfy
   labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: ntfy
     app: ntfy
   annotations:
     secrets.infisical.com/auto-reload: 'true'
@@ -99,6 +110,9 @@ apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: ntfy
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: ntfy
 spec:
   entryPoints:
     - websecure
@@ -116,6 +130,9 @@ apiVersion: traefik.io/v1alpha1
 kind: IngressRoute
 metadata:
   name: ntfy-http
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: ntfy
 spec:
   entryPoints:
     - web
@@ -134,6 +151,9 @@ apiVersion: secrets.infisical.com/v1alpha1
 kind: InfisicalSecret
 metadata:
   name: ntfy-auth
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: ntfy
 spec:
   hostAPI: http://infisical.infisical.svc.cluster.local:8080
   resyncInterval: 60
@@ -158,6 +178,9 @@ apiVersion: v1
 kind: ConfigMap
 metadata:
   name: ntfy-server-config
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: ntfy
 data:
   server.yml: |
     # Editing this file rolls the pod automatically: it lands in the
@@ -208,6 +231,8 @@ kind: Service
 metadata:
   name: ntfy
   labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: ntfy
     app: ntfy
 spec:
   type: ClusterIP
@@ -223,3 +248,6 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: ntfy-infisical
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: ntfy
