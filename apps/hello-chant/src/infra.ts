@@ -1,7 +1,8 @@
 import { Deployment, Service, Certificate, Container, Probe, IngressRoute } from "@intentius/chant-lexicon-k8s";
+import { params } from "@intentius/chant/params";
 
 const name = "hello-chant";
-const hostname = "hello-chant.inevitable.fyi";
+const hostname = `${name}.${params.domain}`;
 const labels = { "app.kubernetes.io/name": name };
 
 export const deployment = new Deployment({
@@ -50,7 +51,7 @@ export const certificate = new Certificate({
   metadata: { name: `${name}-tls` },
   spec: {
     secretName: `${name}-tls`,
-    issuerRef: { name: "letsencrypt-production", kind: "ClusterIssuer" },
+    issuerRef: { name: params.issuer as string, kind: "ClusterIssuer" },
     dnsNames: [hostname],
   },
 });

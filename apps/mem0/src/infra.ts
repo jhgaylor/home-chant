@@ -6,10 +6,11 @@ import {
   Probe,
 } from "@intentius/chant-lexicon-k8s";
 import { TraefikApp, TraefikEndpoint } from "@home-chant/traefik-app";
+import { params } from "@intentius/chant/params";
 
 const name = "mem0";
-const apiHost = "mem0.inevitable.fyi";
-const dashboardHost = "mem0-ui.inevitable.fyi";
+const apiHost = `${name}.${params.domain}`;
+const dashboardHost = `${name}-ui.${params.domain}`;
 const apiPort = 8000;
 const dashboardPort = 3000;
 const dashboardName = `${name}-dashboard`;
@@ -26,6 +27,7 @@ const app = TraefikApp({
   name,
   host: apiHost,
   port: apiPort,
+  issuer: params.issuer as string,
   infisical: {
     identityId: "ca535f2a-a3f9-42f2-9ffe-3b369e496519",
     projectSlug: "mem0-wzd-g",
@@ -49,6 +51,7 @@ const dashboard = TraefikEndpoint({
   name: dashboardName,
   host: dashboardHost,
   port: dashboardPort,
+  issuer: params.issuer as string,
 });
 
 export const dashboardService = dashboard.service;

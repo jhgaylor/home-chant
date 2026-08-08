@@ -69,6 +69,36 @@ npx chant build src --lexicon k8s --format yaml --output k8s/manifests.yaml
 
 Then onboard it to Flux by adding a `Kustomization` (pointing at `apps/<name>/k8s`) to `clusters/home/apps/home-chant.yaml` in the home-cloud repo — see [home-cloud's deploying-apps.md](https://github.com/jhgaylor/home-cloud/blob/main/docs/deploying-apps.md). Pick an app name that doesn't collide with anything already running in the `default` namespace — Deployment selectors are immutable, so a name collision blocks Flux from ever applying it.
 
+## Build parameters
+
+Each app declares `domain` and `issuer` under `buildParams` in its
+`chant.config.ts`, and `src/infra.ts` reads them as `params.domain` /
+`params.issuer`. The defaults reproduce what's deployed, so a plain
+`chant build` is unchanged; overriding gives a staging-cert path without a
+second source tree:
+
+```bash
+npx chant build src --lexicon k8s --format yaml --param issuer=letsencrypt-staging
+npx chant build src --lexicon k8s --format yaml --param domain=lab.example.com
+```
+
+`domain` is the base domain the public hostname hangs off — `dav.${domain}` for
+radicale, `mem0-ui.${domain}` for mem0's dashboard. Its default is per app:
+everything is on `inevitable.fyi` except calcom, which is on `jakegaylor.com`.
+`issuer` declares an `enum`, so a typo is a build error naming the parameter
+rather than a bad Certificate reaching the cluster.
+
+These are parameters rather than `process.env` reads on purpose: a parameter is
+resolved before any source file is read, so it folds to a literal. An ambient
+env read can't fold, and chant rejects a bare `process` reference in project
+source.
+
+Note the `EMAIL_FROM` / `SMTP_FROM_EMAIL` addresses on mealie and calcom are
+*not* parameterized — those are on the mail domain (`updates.inevitable.fyi`),
+which is independent of where the app is hosted. calcom is the case that proves
+the point: its public host is on `jakegaylor.com` while its mail stays on
+`inevitable.fyi`.
+
 ## CI
 
 `.github/workflows/validate.yml` discovers every app under `apps/*/` and, for each, runs `chant lint` and rebuilds `k8s/manifests.yaml`, failing if the committed output has drifted from the TypeScript source.
