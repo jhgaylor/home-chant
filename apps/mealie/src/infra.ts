@@ -1,69 +1,44 @@
 import {
-  Certificate,
   Cluster,
   Container,
   Deployment,
-  InfisicalSecret,
-  IngressRoute,
-  Namespace,
   PersistentVolumeClaim,
   Probe,
-  Service,
-  ServiceAccount,
 } from "@intentius/chant-lexicon-k8s";
+import { TraefikApp } from "@home-chant/traefik-app";
 
 const name = "mealie";
 const hostname = "mealie.inevitable.fyi";
 const port = 9000;
-const labels = { app: name };
 
-// Namespaced resources deliberately carry no `metadata.namespace` — the Flux
-// Kustomization in home-cloud sets `targetNamespace: mealie` (chant's WK8001
-// flags hardcoded namespaces in source). The Namespace object itself survives
-// that transform unchanged, so this is still what creates the namespace.
-export const namespace = new Namespace({ metadata: { name } });
-
-// Identity the secrets-operator presents to Infisical for the InfisicalSecret
-// below (kubernetesAuth). The `mealie-operator` machine identity on the server
-// is restricted to exactly this ServiceAccount + namespace; the operator mints
-// short-lived tokens for it.
-export const serviceAccount = new ServiceAccount({
-  metadata: { name: `${name}-infisical` },
-});
-
-// Materializes a Secret named `mealie-secrets` holding SMTP_PASSWORD (the Resend
-// API key) — the only secret value here; the rest of the SMTP_* config is plain
-// env on the Deployment. The namespaces below are spec fields, not
-// `metadata.namespace`, so the Flux namespace transform does not rewrite them.
-export const secrets = new InfisicalSecret({
-  metadata: { name: `${name}-secrets` },
-  spec: {
-    // Internal Service DNS — no Traefik/Cloudflare round-trip for in-cluster
-    // reconciles.
-    hostAPI: "http://infisical.infisical.svc.cluster.local:8080",
-    resyncInterval: 60,
-    authentication: {
-      // Kubernetes-native auth: no stored credential.
-      kubernetesAuth: {
-        identityId: "150b0c1f-edf2-49c2-9ceb-fba2f009a8b2",
-        autoCreateServiceAccountToken: true,
-        serviceAccountRef: { name: `${name}-infisical`, namespace: name },
-        secretsScope: {
-          projectSlug: "mealie-d-qiw",
-          envSlug: "prod",
-          secretsPath: "/",
-        },
-      },
-    },
-    managedSecretReference: {
-      secretName: `${name}-secrets`,
-      secretNamespace: name,
-      // Orphan = operator overwrites existing Secret data in place; the
-      // materialized Secret survives CR deletion.
-      creationPolicy: "Orphan",
-    },
+// Namespace, the Infisical identity pair, Service, Certificate and the
+// IngressRoute redirect pair. The Deployment below is hand-written — see the
+// composite's own comment for why the workload stays out of it.
+//
+// `mealie-secrets` holds SMTP_PASSWORD (the Resend API key), the only secret
+// value here; the rest of the SMTP_* config is plain env on the Deployment.
+const app = TraefikApp({
+  name,
+  host: hostname,
+  port,
+  infisical: {
+    identityId: "150b0c1f-edf2-49c2-9ceb-fba2f009a8b2",
+    projectSlug: "mealie-d-qiw",
+    secretName: `${name}-secrets`,
   },
 });
+
+export const {
+  namespace,
+  serviceAccount,
+  secret,
+  service,
+  certificate,
+  ingressRoute,
+  ingressRouteHttp,
+} = app;
+
+const labels = app.labels;
 
 // Postgres backend (recipes, users, meal plans, shopping lists). Plain
 // relational workload — no extensions needed, so the operator's default image
@@ -185,59 +160,5 @@ export const deployment = new Deployment({
         ],
       },
     },
-  },
-});
-
-export const service = new Service({
-  metadata: { name, labels },
-  spec: {
-    type: "ClusterIP",
-    selector: labels,
-    ports: [{ name: "http", port, targetPort: "http" }],
-  },
-});
-
-export const certificate = new Certificate({
-  metadata: { name: `${name}-tls` },
-  spec: {
-    secretName: `${name}-tls`,
-    issuerRef: { name: "letsencrypt-production", kind: "ClusterIssuer" },
-    dnsNames: [hostname],
-  },
-});
-
-// Public Mealie at https://mealie.inevitable.fyi. Same exposure story as mem0:
-// every route sits behind Mealie's own login and ALLOW_SIGNUP is false, so
-// unauthenticated traffic only sees the login screen (plus any recipes
-// deliberately shared via public link — which is the point of exposing it).
-export const ingressRoute = new IngressRoute({
-  metadata: { name },
-  spec: {
-    entryPoints: ["websecure"],
-    routes: [
-      {
-        match: `Host(\`${hostname}\`)`,
-        kind: "Rule",
-        services: [{ name, port }],
-      },
-    ],
-    tls: { secretName: `${name}-tls` },
-  },
-});
-
-export const ingressRouteHttp = new IngressRoute({
-  metadata: { name: `${name}-http` },
-  spec: {
-    entryPoints: ["web"],
-    routes: [
-      {
-        match: `Host(\`${hostname}\`)`,
-        kind: "Rule",
-        // The redirect-https Middleware lives in the default namespace; this is
-        // a spec-level cross-namespace reference, not metadata.namespace.
-        middlewares: [{ name: "redirect-https", namespace: "default" }],
-        services: [{ name, port }],
-      },
-    ],
   },
 });

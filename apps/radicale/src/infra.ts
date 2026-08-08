@@ -1,70 +1,46 @@
 import {
-  Certificate,
   ConfigMap,
   Container,
   Deployment,
-  InfisicalSecret,
-  IngressRoute,
-  Namespace,
   PersistentVolumeClaim,
   Probe,
-  Service,
-  ServiceAccount,
 } from "@intentius/chant-lexicon-k8s";
+import { TraefikApp } from "@home-chant/traefik-app";
 
 const name = "radicale";
 const hostname = "dav.inevitable.fyi";
-const labels = { app: name };
 
-// Namespaced resources deliberately carry no `metadata.namespace` — the Flux
-// Kustomization in home-cloud sets `targetNamespace: radicale` (chant's WK8001
-// flags hardcoded namespaces in source). The Namespace object itself survives
-// that transform unchanged, so this is still what creates the namespace.
-export const namespace = new Namespace({ metadata: { name } });
-
-// Identity the secrets-operator presents to Infisical for the InfisicalSecret
-// below (kubernetesAuth). The `radicale-operator` machine identity on the server
-// is restricted to exactly this ServiceAccount + namespace.
-export const serviceAccount = new ServiceAccount({
-  metadata: { name: `${name}-infisical` },
-});
-
+// Namespace, the Infisical identity pair, Service, Certificate and the
+// IngressRoute redirect pair. The Deployment below is hand-written — see the
+// composite's own comment for why the workload stays out of it.
+//
 // Keys in the radicale project:
 //   HTPASSWD_USERS    — bcrypt htpasswd file content, mounted as
 //                       /etc/radicale/users by the Deployment
 //   RADICALE_PASSWORD — plaintext reference copy for configuring CalDAV clients
 //                       (Apple Calendar, Cal.com); not consumed by any pod
-// The namespaces below are spec fields, not `metadata.namespace`, so the Flux
-// namespace transform does not rewrite them.
-export const auth = new InfisicalSecret({
-  metadata: { name: `${name}-auth` },
-  spec: {
-    // Internal Service DNS — no Traefik/Cloudflare round-trip for in-cluster
-    // reconciles.
-    hostAPI: "http://infisical.infisical.svc.cluster.local:8080",
-    resyncInterval: 60,
-    authentication: {
-      // Kubernetes-native auth: no stored credential.
-      kubernetesAuth: {
-        identityId: "72e0768b-bcc4-4bc4-a495-48bcc7b4145d",
-        autoCreateServiceAccountToken: true,
-        serviceAccountRef: { name: `${name}-infisical`, namespace: name },
-        secretsScope: {
-          projectSlug: "radicale-tx-mo",
-          envSlug: "prod",
-          secretsPath: "/",
-        },
-      },
-    },
-    managedSecretReference: {
-      secretName: `${name}-auth`,
-      secretNamespace: name,
-      // Orphan = operator overwrites existing Secret data in place; the
-      // materialized Secret survives CR deletion.
-      creationPolicy: "Orphan",
-    },
+const app = TraefikApp({
+  name,
+  host: hostname,
+  port: 80,
+  infisical: {
+    identityId: "72e0768b-bcc4-4bc4-a495-48bcc7b4145d",
+    projectSlug: "radicale-tx-mo",
+    secretName: `${name}-auth`,
   },
 });
+
+export const {
+  namespace,
+  serviceAccount,
+  secret,
+  service,
+  certificate,
+  ingressRoute,
+  ingressRouteHttp,
+} = app;
+
+const labels = app.labels;
 
 // Calendar collections are plain .ics files under /data/collections — no
 // database. Radicale is single-writer (filesystem locking), so the Deployment is
@@ -182,59 +158,5 @@ export const deployment = new Deployment({
         ],
       },
     },
-  },
-});
-
-export const service = new Service({
-  metadata: { name, labels },
-  spec: {
-    type: "ClusterIP",
-    selector: labels,
-    ports: [{ name: "http", port: 80, targetPort: "http" }],
-  },
-});
-
-export const certificate = new Certificate({
-  metadata: { name: `${name}-tls` },
-  spec: {
-    secretName: `${name}-tls`,
-    issuerRef: { name: "letsencrypt-production", kind: "ClusterIssuer" },
-    dnsNames: [hostname],
-  },
-});
-
-// Public CalDAV endpoint at https://dav.inevitable.fyi — Apple Calendar on and
-// off the tailnet, and Cal.com in-cluster, both sync against it. Auth is
-// Radicale's own htpasswd (bcrypt); everything under / requires credentials
-// except the web-UI login page.
-export const ingressRoute = new IngressRoute({
-  metadata: { name },
-  spec: {
-    entryPoints: ["websecure"],
-    routes: [
-      {
-        match: `Host(\`${hostname}\`)`,
-        kind: "Rule",
-        services: [{ name, port: 80 }],
-      },
-    ],
-    tls: { secretName: `${name}-tls` },
-  },
-});
-
-export const ingressRouteHttp = new IngressRoute({
-  metadata: { name: `${name}-http` },
-  spec: {
-    entryPoints: ["web"],
-    routes: [
-      {
-        match: `Host(\`${hostname}\`)`,
-        kind: "Rule",
-        // The redirect-https Middleware lives in the default namespace; this is
-        // a spec-level cross-namespace reference, not metadata.namespace.
-        middlewares: [{ name: "redirect-https", namespace: "default" }],
-        services: [{ name, port: 80 }],
-      },
-    ],
   },
 });

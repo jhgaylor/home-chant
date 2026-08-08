@@ -1,69 +1,43 @@
 import {
-  Certificate,
   ConfigMap,
   Container,
   Deployment,
-  InfisicalSecret,
-  IngressRoute,
-  Namespace,
   PersistentVolumeClaim,
   Probe,
-  Service,
-  ServiceAccount,
 } from "@intentius/chant-lexicon-k8s";
+import { TraefikApp } from "@home-chant/traefik-app";
 
 const name = "ntfy";
 const hostname = "ntfy.inevitable.fyi";
-const labels = { app: name };
 
-// Namespaced resources deliberately carry no `metadata.namespace` — the Flux
-// Kustomization in home-cloud sets `targetNamespace: ntfy` (chant's WK8001
-// flags hardcoded namespaces in source). The Namespace object itself survives
-// that transform unchanged, so this is still what creates the namespace.
-export const namespace = new Namespace({ metadata: { name } });
-
-// Identity the secrets-operator presents to Infisical for the InfisicalSecret
-// below (kubernetesAuth). The `ntfy-operator` machine identity on the Infisical
-// server is restricted to exactly this ServiceAccount + namespace.
-export const serviceAccount = new ServiceAccount({
-  metadata: { name: `${name}-infisical` },
-});
-
-// NTFY_AUTH_USERS / TOKENS / ACCESS, materialized into the `ntfy-auth` Secret
-// that the Deployment reads via envFrom. Namespaces here are spec fields, not
-// `metadata.namespace`, so the Flux namespace transform does not rewrite them —
-// they have to be literal.
-export const authSecret = new InfisicalSecret({
-  metadata: { name: `${name}-auth` },
-  spec: {
-    // Internal Service DNS — no Traefik/Cloudflare round-trip for in-cluster
-    // reconciles. Matches the operator's default, explicit here so the CR is
-    // self-documenting.
-    hostAPI: "http://infisical.infisical.svc.cluster.local:8080",
-    resyncInterval: 60,
-    authentication: {
-      // Kubernetes-native auth: no stored credential.
-      kubernetesAuth: {
-        identityId: "30e98c30-2e34-426c-ad22-2e3e5d734e88",
-        autoCreateServiceAccountToken: true,
-        serviceAccountRef: { name: `${name}-infisical`, namespace: name },
-        secretsScope: {
-          projectSlug: "ntfy-h-f-bm",
-          envSlug: "prod",
-          secretsPath: "/",
-        },
-      },
-    },
-    managedSecretReference: {
-      secretName: `${name}-auth`,
-      secretNamespace: name,
-      // Orphan so the operator overwrites data in place rather than fighting an
-      // existing Secret of the same name. Trade-off: deleting this CR leaves the
-      // materialized Secret behind.
-      creationPolicy: "Orphan",
-    },
+// Namespace, the Infisical identity pair, Service, Certificate and the
+// IngressRoute redirect pair. The Deployment below is hand-written — see the
+// composite's own comment for why the workload stays out of it.
+//
+// The materialized `ntfy-auth` Secret holds NTFY_AUTH_USERS / TOKENS / ACCESS,
+// which the Deployment reads via envFrom.
+const app = TraefikApp({
+  name,
+  host: hostname,
+  port: 80,
+  infisical: {
+    identityId: "30e98c30-2e34-426c-ad22-2e3e5d734e88",
+    projectSlug: "ntfy-h-f-bm",
+    secretName: `${name}-auth`,
   },
 });
+
+export const {
+  namespace,
+  serviceAccount,
+  secret,
+  service,
+  certificate,
+  ingressRoute,
+  ingressRouteHttp,
+} = app;
+
+const labels = app.labels;
 
 // SQLite-backed cache + user/auth DB + attachments live on one PVC. ntfy is
 // single-writer, so the Deployment is single-replica with the Recreate strategy
@@ -187,55 +161,5 @@ export const deployment = new Deployment({
         ],
       },
     },
-  },
-});
-
-export const service = new Service({
-  metadata: { name, labels },
-  spec: {
-    type: "ClusterIP",
-    selector: labels,
-    ports: [{ name: "http", port: 80, targetPort: "http" }],
-  },
-});
-
-export const certificate = new Certificate({
-  metadata: { name: `${name}-tls` },
-  spec: {
-    secretName: `${name}-tls`,
-    issuerRef: { name: "letsencrypt-production", kind: "ClusterIssuer" },
-    dnsNames: [hostname],
-  },
-});
-
-export const ingressRoute = new IngressRoute({
-  metadata: { name },
-  spec: {
-    entryPoints: ["websecure"],
-    routes: [
-      {
-        match: `Host(\`${hostname}\`)`,
-        kind: "Rule",
-        services: [{ name, port: 80 }],
-      },
-    ],
-    tls: { secretName: `${name}-tls` },
-  },
-});
-
-export const ingressRouteHttp = new IngressRoute({
-  metadata: { name: `${name}-http` },
-  spec: {
-    entryPoints: ["web"],
-    routes: [
-      {
-        match: `Host(\`${hostname}\`)`,
-        kind: "Rule",
-        // The redirect-https Middleware lives in the default namespace; this is
-        // a spec-level cross-namespace reference, not metadata.namespace.
-        middlewares: [{ name: "redirect-https", namespace: "default" }],
-        services: [{ name, port: 80 }],
-      },
-    ],
   },
 });

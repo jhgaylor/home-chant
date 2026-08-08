@@ -37,6 +37,14 @@ jobs:
         with:
           node-version: 24
 
+      # Apps depend on packages/traefik-app through a `file:` reference, which
+      # npm links rather than copies. Node resolves the link to its real path,
+      # so the composite's own imports resolve from packages/traefik-app —
+      # which needs its dependencies installed there, not just in the app.
+      - name: Install shared composite package
+        working-directory: packages/traefik-app
+        run: npm ci
+
       - name: Install dependencies
         working-directory: ${{ matrix.app }}
         run: npm ci

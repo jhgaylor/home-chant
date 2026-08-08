@@ -1,0 +1,14 @@
+{
+  "name": "@home-chant/traefik-app",
+  "version": "0.1.0",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "exports": { ".": "./src/index.ts" },
+  "dependencies": {
+    "@intentius/chant-lexicon-k8s": "^0.41.20"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}
