@@ -77,7 +77,12 @@ export const dataVolume = new PersistentVolumeClaim({
   },
 });
 
-const serverYml = `# ntfy is reachable in two ways:
+const serverYml = `# Editing this file rolls the pod automatically: it lands in the
+# ntfy-server-config ConfigMap, and the Deployment carries
+# configmap.reloader.stakater.com/reload so Stakater Reloader restarts
+# ntfy when the contents change. ntfy reads this once at startup.
+#
+# ntfy is reachable in two ways:
 #   - Internally: http://ntfy.ntfy.svc.cluster.local  (Alertmanager → ntfy)
 #   - Publicly:   https://ntfy.inevitable.fyi          (phone app subscribes here)
 # base-url is the public origin; ntfy uses it when constructing
