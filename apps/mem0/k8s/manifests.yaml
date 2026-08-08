@@ -1,0 +1,355 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mem0
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: mem0-tls
+spec:
+  secretName: mem0-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - mem0.inevitable.fyi
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: mem0-dashboard-tls
+spec:
+  secretName: mem0-dashboard-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - mem0-ui.inevitable.fyi
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mem0-dashboard
+  labels:
+    app: mem0-dashboard
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mem0-dashboard
+  template:
+    metadata:
+      labels:
+        app: mem0-dashboard
+    spec:
+      containers:
+        - name: dashboard
+          image: ghcr.io/jhgaylor/mem0-dashboard:v2.0.2
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+              name: http
+          env:
+            - name: NEXT_PUBLIC_API_URL
+              value: https://mem0.inevitable.fyi
+            - name: API_INTERNAL_URL
+              value: http://mem0.mem0.svc.cluster.local:8000
+            - name: NEXT_PUBLIC_INSTANCE_NAME
+              value: home-cloud
+          resources:
+            requests:
+              cpu: '50m'
+              memory: '128Mi'
+            limits:
+              memory: '512Mi'
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: mem0-dashboard
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`mem0-ui.inevitable.fyi`)
+      kind: Rule
+      services:
+        - name: mem0-dashboard
+          port: 3000
+  tls:
+    secretName: mem0-dashboard-tls
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: mem0-dashboard-http
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`mem0-ui.inevitable.fyi`)
+      kind: Rule
+      middlewares:
+        - name: redirect-https
+          namespace: default
+      services:
+        - name: mem0-dashboard
+          port: 3000
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mem0-dashboard
+  labels:
+    app: mem0-dashboard
+spec:
+  type: ClusterIP
+  selector:
+    app: mem0-dashboard
+  ports:
+    - name: http
+      port: 3000
+      targetPort: http
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mem0
+  labels:
+    app: mem0
+  annotations:
+    secrets.infisical.com/auto-reload: 'true'
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mem0
+  template:
+    metadata:
+      labels:
+        app: mem0
+    spec:
+      containers:
+        - name: mem0
+          image: ghcr.io/jhgaylor/mem0-server:v2.0.2
+          imagePullPolicy: Always
+          command:
+            - sh
+            - -c
+          args:
+            - alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port 8000
+          workingDir: /app
+          ports:
+            - containerPort: 8000
+              name: http
+          env:
+            - name: POSTGRES_HOST
+              valueFrom:
+                secretKeyRef:
+                  name: mem0-pg-app
+                  key: host
+            - name: POSTGRES_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: mem0-pg-app
+                  key: port
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mem0-pg-app
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mem0-pg-app
+                  key: password
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: mem0-pg-app
+                  key: dbname
+            - name: APP_DB_NAME
+              valueFrom:
+                secretKeyRef:
+                  name: mem0-pg-app
+                  key: dbname
+            - name: POSTGRES_COLLECTION_NAME
+              value: memories
+            - name: HISTORY_DB_PATH
+              value: /app/history/history.db
+            - name: MEM0_TELEMETRY
+              value: 'false'
+            - name: AUTH_DISABLED
+              value: 'false'
+            - name: DASHBOARD_URL
+              value: https://mem0-ui.inevitable.fyi
+          envFrom:
+            - secretRef:
+                name: mem0-secrets
+          volumeMounts:
+            - name: history
+              mountPath: /app/history
+          resources:
+            requests:
+              cpu: '100m'
+              memory: '256Mi'
+            limits:
+              memory: '1Gi'
+          readinessProbe:
+            httpGet:
+              path: /openapi.json
+              port: http
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /openapi.json
+              port: http
+            initialDelaySeconds: 30
+            periodSeconds: 30
+      volumes:
+        - name: history
+          persistentVolumeClaim:
+            claimName: mem0-history
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mem0-history
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: '1Gi'
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: mem0
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`mem0.inevitable.fyi`)
+      kind: Rule
+      services:
+        - name: mem0
+          port: 8000
+  tls:
+    secretName: mem0-tls
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: mem0-http
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`mem0.inevitable.fyi`)
+      kind: Rule
+      middlewares:
+        - name: redirect-https
+          namespace: default
+      services:
+        - name: mem0
+          port: 8000
+
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: mem0-pg
+spec:
+  instances: 1
+  imageName: ghcr.io/cloudnative-pg/postgresql:17.6-standard-trixie
+  bootstrap:
+    initdb:
+      database: mem0_app
+      owner: mem0
+      postInitTemplateSQL:
+        - CREATE EXTENSION IF NOT EXISTS vector;
+  storage:
+    storageClass: longhorn
+    size: '10Gi'
+  resources:
+    requests:
+      cpu: '50m'
+      memory: '256Mi'
+    limits:
+      memory: '512Mi'
+
+---
+apiVersion: secrets.infisical.com/v1alpha1
+kind: InfisicalSecret
+metadata:
+  name: mem0-secrets
+spec:
+  hostAPI: http://infisical.infisical.svc.cluster.local:8080
+  resyncInterval: 60
+  authentication:
+    kubernetesAuth:
+      identityId: ca535f2a-a3f9-42f2-9ffe-3b369e496519
+      autoCreateServiceAccountToken: true
+      serviceAccountRef:
+        name: mem0-infisical
+        namespace: mem0
+      secretsScope:
+        projectSlug: mem0-wzd-g
+        envSlug: prod
+        secretsPath: /
+  managedSecretReference:
+    secretName: mem0-secrets
+    secretNamespace: mem0
+    creationPolicy: Orphan
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mem0
+  labels:
+    app: mem0
+spec:
+  type: ClusterIP
+  selector:
+    app: mem0
+  ports:
+    - name: http
+      port: 8000
+      targetPort: http
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mem0-infisical
