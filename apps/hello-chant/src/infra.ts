@@ -1,5 +1,4 @@
-import { Deployment, Service, Certificate, Container, Probe } from "@intentius/chant-lexicon-k8s";
-import { IngressRoute } from "./crds.js";
+import { Deployment, Service, Certificate, Container, Probe, IngressRoute } from "@intentius/chant-lexicon-k8s";
 
 const name = "hello-chant";
 const hostname = "hello-chant.inevitable.fyi";

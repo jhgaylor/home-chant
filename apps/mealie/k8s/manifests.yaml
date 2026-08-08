@@ -1,0 +1,235 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: mealie
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: mealie-tls
+spec:
+  secretName: mealie-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - mealie.inevitable.fyi
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mealie-data
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: longhorn
+  resources:
+    requests:
+      storage: '5Gi'
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mealie
+  labels:
+    app: mealie
+  annotations:
+    secrets.infisical.com/auto-reload: 'true'
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mealie
+  template:
+    metadata:
+      labels:
+        app: mealie
+    spec:
+      containers:
+        - name: mealie
+          image: ghcr.io/mealie-recipes/mealie:v3.21.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 9000
+              name: http
+          env:
+            - name: TZ
+              value: America/New_York
+            - name: BASE_URL
+              value: https://mealie.inevitable.fyi
+            - name: ALLOW_SIGNUP
+              value: 'false'
+            - name: DB_ENGINE
+              value: postgres
+            - name: POSTGRES_SERVER
+              valueFrom:
+                secretKeyRef:
+                  name: mealie-pg-app
+                  key: host
+            - name: POSTGRES_PORT
+              valueFrom:
+                secretKeyRef:
+                  name: mealie-pg-app
+                  key: port
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: mealie-pg-app
+                  key: username
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mealie-pg-app
+                  key: password
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: mealie-pg-app
+                  key: dbname
+            - name: SMTP_HOST
+              value: smtp.resend.com
+            - name: SMTP_PORT
+              value: '465'
+            - name: SMTP_AUTH_STRATEGY
+              value: SSL
+            - name: SMTP_USER
+              value: resend
+            - name: SMTP_FROM_EMAIL
+              value: mealie@updates.inevitable.fyi
+            - name: SMTP_FROM_NAME
+              value: Mealie
+          envFrom:
+            - secretRef:
+                name: mealie-secrets
+          volumeMounts:
+            - name: data
+              mountPath: /app/data
+          resources:
+            requests:
+              cpu: '100m'
+              memory: '512Mi'
+            limits:
+              memory: '1Gi'
+          readinessProbe:
+            httpGet:
+              path: /api/app/about
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/app/about
+              port: http
+            initialDelaySeconds: 60
+            periodSeconds: 30
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: mealie-data
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: mealie
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`mealie.inevitable.fyi`)
+      kind: Rule
+      services:
+        - name: mealie
+          port: 9000
+  tls:
+    secretName: mealie-tls
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: mealie-http
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`mealie.inevitable.fyi`)
+      kind: Rule
+      middlewares:
+        - name: redirect-https
+          namespace: default
+      services:
+        - name: mealie
+          port: 9000
+
+---
+apiVersion: postgresql.cnpg.io/v1
+kind: Cluster
+metadata:
+  name: mealie-pg
+spec:
+  instances: 1
+  bootstrap:
+    initdb:
+      database: mealie
+      owner: mealie
+  storage:
+    storageClass: longhorn
+    size: '5Gi'
+  resources:
+    requests:
+      cpu: '50m'
+      memory: '256Mi'
+    limits:
+      memory: '512Mi'
+
+---
+apiVersion: secrets.infisical.com/v1alpha1
+kind: InfisicalSecret
+metadata:
+  name: mealie-secrets
+spec:
+  hostAPI: http://infisical.infisical.svc.cluster.local:8080
+  resyncInterval: 60
+  authentication:
+    kubernetesAuth:
+      identityId: '150b0c1f-edf2-49c2-9ceb-fba2f009a8b2'
+      autoCreateServiceAccountToken: true
+      serviceAccountRef:
+        name: mealie-infisical
+        namespace: mealie
+      secretsScope:
+        projectSlug: mealie-d-qiw
+        envSlug: prod
+        secretsPath: /
+  managedSecretReference:
+    secretName: mealie-secrets
+    secretNamespace: mealie
+    creationPolicy: Orphan
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mealie
+  labels:
+    app: mealie
+spec:
+  type: ClusterIP
+  selector:
+    app: mealie
+  ports:
+    - name: http
+      port: 9000
+      targetPort: http
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mealie-infisical
