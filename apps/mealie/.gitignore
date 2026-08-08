@@ -1,0 +1,6 @@
+dist/
+node_modules/
+.chant/types/
+.chant/meta/
+.chant/rules/
+skills/
