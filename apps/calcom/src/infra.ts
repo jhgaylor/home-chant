@@ -1,69 +1,39 @@
-import {
-  Certificate,
-  Cluster,
-  Container,
-  Deployment,
-  InfisicalSecret,
-  IngressRoute,
-  Namespace,
-  Probe,
-  Service,
-  ServiceAccount,
-} from "@intentius/chant-lexicon-k8s";
+import { Cluster, Container, Deployment, Probe } from "@intentius/chant-lexicon-k8s";
+import { TraefikApp } from "@home-chant/traefik-app";
 
 const name = "calcom";
 const hostname = "cal.jakegaylor.com";
 const port = 3000;
-const labels = { app: name };
 
-// Namespaced resources deliberately carry no `metadata.namespace` — the Flux
-// Kustomization in home-cloud sets `targetNamespace: calcom` (chant's WK8001
-// flags hardcoded namespaces in source). The Namespace object itself survives
-// that transform unchanged, so this is still what creates the namespace.
-export const namespace = new Namespace({ metadata: { name } });
-
-// Identity the secrets-operator presents to Infisical for the InfisicalSecret
-// below (kubernetesAuth). The `calcom-operator` machine identity on the server
-// is restricted to exactly this ServiceAccount + namespace; the operator mints
-// short-lived tokens for it.
-export const serviceAccount = new ServiceAccount({
-  metadata: { name: `${name}-infisical` },
-});
-
-// Materializes a Secret named `calcom-secrets` holding NEXTAUTH_SECRET,
+// Namespace, the Infisical identity pair, Service, Certificate and the
+// IngressRoute redirect pair. The Deployment below is hand-written — see the
+// composite's own comment for why the workload stays out of it.
+//
+// The materialized `calcom-secrets` Secret holds NEXTAUTH_SECRET,
 // CALENDSO_ENCRYPTION_KEY and EMAIL_SERVER_PASSWORD (the Resend API key for
-// booking emails), which the Deployment consumes via envFrom. The namespaces
-// below are spec fields, not `metadata.namespace`, so the Flux namespace
-// transform does not rewrite them.
-export const secrets = new InfisicalSecret({
-  metadata: { name: `${name}-secrets` },
-  spec: {
-    // Internal Service DNS — no Traefik/Cloudflare round-trip for in-cluster
-    // reconciles.
-    hostAPI: "http://infisical.infisical.svc.cluster.local:8080",
-    resyncInterval: 60,
-    authentication: {
-      // Kubernetes-native auth: no stored credential.
-      kubernetesAuth: {
-        identityId: "187477dd-1cf2-4a4d-932e-80495fea4db0",
-        autoCreateServiceAccountToken: true,
-        serviceAccountRef: { name: `${name}-infisical`, namespace: name },
-        secretsScope: {
-          projectSlug: "calcom-8kfu",
-          envSlug: "prod",
-          secretsPath: "/",
-        },
-      },
-    },
-    managedSecretReference: {
-      secretName: `${name}-secrets`,
-      secretNamespace: name,
-      // Orphan = operator overwrites existing Secret data in place; the
-      // materialized Secret survives CR deletion.
-      creationPolicy: "Orphan",
-    },
+// booking emails), which the Deployment consumes via envFrom.
+const app = TraefikApp({
+  name,
+  host: hostname,
+  port,
+  infisical: {
+    identityId: "187477dd-1cf2-4a4d-932e-80495fea4db0",
+    projectSlug: "calcom-8kfu",
+    secretName: `${name}-secrets`,
   },
 });
+
+export const {
+  namespace,
+  serviceAccount,
+  secret,
+  service,
+  certificate,
+  ingressRoute,
+  ingressRouteHttp,
+} = app;
+
+const labels = app.labels;
 
 // Postgres backend (users, event types, bookings, availability schedules). Plain
 // relational workload — the operator's default image variant is fine. Cal.com's
@@ -167,60 +137,5 @@ export const deployment = new Deployment({
         ],
       },
     },
-  },
-});
-
-export const service = new Service({
-  metadata: { name, labels },
-  spec: {
-    type: "ClusterIP",
-    selector: labels,
-    ports: [{ name: "http", port, targetPort: "http" }],
-  },
-});
-
-export const certificate = new Certificate({
-  metadata: { name: `${name}-tls` },
-  spec: {
-    secretName: `${name}-tls`,
-    issuerRef: { name: "letsencrypt-production", kind: "ClusterIssuer" },
-    dnsNames: [hostname],
-  },
-});
-
-// Public Cal.com at https://cal.jakegaylor.com — the scheduling backend for the
-// ai.jakegaylor.com A2A agent's schedule-intro-call skill, and a human-usable
-// booking page. Signup is not disabled at the ingress: Cal.com's first-run flow
-// creates the admin account, after which new-user signup is closed from the
-// admin settings.
-export const ingressRoute = new IngressRoute({
-  metadata: { name },
-  spec: {
-    entryPoints: ["websecure"],
-    routes: [
-      {
-        match: `Host(\`${hostname}\`)`,
-        kind: "Rule",
-        services: [{ name, port }],
-      },
-    ],
-    tls: { secretName: `${name}-tls` },
-  },
-});
-
-export const ingressRouteHttp = new IngressRoute({
-  metadata: { name: `${name}-http` },
-  spec: {
-    entryPoints: ["web"],
-    routes: [
-      {
-        match: `Host(\`${hostname}\`)`,
-        kind: "Rule",
-        // The redirect-https Middleware lives in the default namespace; this is
-        // a spec-level cross-namespace reference, not metadata.namespace.
-        middlewares: [{ name: "redirect-https", namespace: "default" }],
-        services: [{ name, port }],
-      },
-    ],
   },
 });

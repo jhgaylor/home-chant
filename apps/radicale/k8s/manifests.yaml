@@ -4,30 +4,6 @@ metadata:
   name: radicale
 
 ---
-apiVersion: secrets.infisical.com/v1alpha1
-kind: InfisicalSecret
-metadata:
-  name: radicale-auth
-spec:
-  hostAPI: http://infisical.infisical.svc.cluster.local:8080
-  resyncInterval: 60
-  authentication:
-    kubernetesAuth:
-      identityId: '72e0768b-bcc4-4bc4-a495-48bcc7b4145d'
-      autoCreateServiceAccountToken: true
-      serviceAccountRef:
-        name: radicale-infisical
-        namespace: radicale
-      secretsScope:
-        projectSlug: radicale-tx-mo
-        envSlug: prod
-        secretsPath: /
-  managedSecretReference:
-    secretName: radicale-auth
-    secretNamespace: radicale
-    creationPolicy: Orphan
-
----
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -186,6 +162,30 @@ spec:
       services:
         - name: radicale
           port: 80
+
+---
+apiVersion: secrets.infisical.com/v1alpha1
+kind: InfisicalSecret
+metadata:
+  name: radicale-auth
+spec:
+  hostAPI: http://infisical.infisical.svc.cluster.local:8080
+  resyncInterval: 60
+  authentication:
+    kubernetesAuth:
+      identityId: '72e0768b-bcc4-4bc4-a495-48bcc7b4145d'
+      autoCreateServiceAccountToken: true
+      serviceAccountRef:
+        name: radicale-infisical
+        namespace: radicale
+      secretsScope:
+        projectSlug: radicale-tx-mo
+        envSlug: prod
+        secretsPath: /
+  managedSecretReference:
+    secretName: radicale-auth
+    secretNamespace: radicale
+    creationPolicy: Orphan
 
 ---
 apiVersion: v1

@@ -8,6 +8,7 @@
     "dev": "chant build src --lexicon k8s --watch"
   },
   "dependencies": {
+    "@home-chant/traefik-app": "file:../../packages/traefik-app",
     "@intentius/chant": "^0.41.20",
     "@intentius/chant-lexicon-k8s": "^0.41.20"
   },

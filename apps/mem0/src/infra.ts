@@ -1,73 +1,62 @@
 import {
-  Certificate,
   Cluster,
   Container,
   Deployment,
-  InfisicalSecret,
-  IngressRoute,
-  Namespace,
   PersistentVolumeClaim,
   Probe,
-  Service,
-  ServiceAccount,
 } from "@intentius/chant-lexicon-k8s";
+import { TraefikApp, TraefikEndpoint } from "@home-chant/traefik-app";
 
 const name = "mem0";
 const apiHost = "mem0.inevitable.fyi";
 const dashboardHost = "mem0-ui.inevitable.fyi";
 const apiPort = 8000;
 const dashboardPort = 3000;
-const labels = { app: name };
 const dashboardName = `${name}-dashboard`;
-const dashboardLabels = { app: dashboardName };
 
-// Namespaced resources deliberately carry no `metadata.namespace` — the Flux
-// Kustomization in home-cloud sets `targetNamespace: mem0` (chant's WK8001 flags
-// hardcoded namespaces in source). The Namespace object itself survives that
-// transform unchanged, so this is still what creates the namespace.
-export const namespace = new Namespace({ metadata: { name } });
-
-// Identity the secrets-operator presents to Infisical for the InfisicalSecret
-// below (kubernetesAuth). The `mem0-operator` machine identity on the server is
-// restricted to exactly this ServiceAccount + namespace; the operator mints
-// short-lived tokens for it.
-export const serviceAccount = new ServiceAccount({
-  metadata: { name: `${name}-infisical` },
-});
-
-// Materializes a Secret named `mem0-secrets` holding OPENAI_API_KEY, JWT_SECRET
-// and ADMIN_API_KEY, which the Deployment consumes via envFrom. The namespaces
-// below are spec fields, not `metadata.namespace`, so the Flux namespace
-// transform does not rewrite them.
-export const secrets = new InfisicalSecret({
-  metadata: { name: `${name}-secrets` },
-  spec: {
-    // Internal Service DNS — no Traefik/Cloudflare round-trip for in-cluster
-    // reconciles.
-    hostAPI: "http://infisical.infisical.svc.cluster.local:8080",
-    resyncInterval: 60,
-    authentication: {
-      // Kubernetes-native auth: no stored credential.
-      kubernetesAuth: {
-        identityId: "ca535f2a-a3f9-42f2-9ffe-3b369e496519",
-        autoCreateServiceAccountToken: true,
-        serviceAccountRef: { name: `${name}-infisical`, namespace: name },
-        secretsScope: {
-          projectSlug: "mem0-wzd-g",
-          envSlug: "prod",
-          secretsPath: "/",
-        },
-      },
-    },
-    managedSecretReference: {
-      secretName: `${name}-secrets`,
-      secretNamespace: name,
-      // Orphan instead of Owner — tolerates the existing-Secret-on-first-
-      // reconcile race and decouples Secret lifecycle from CR deletion.
-      creationPolicy: "Orphan",
-    },
+// mem0 is the one app with two public surfaces in a single namespace, so it
+// uses both halves of the composite: TraefikApp for the API (which also brings
+// the Namespace and the Infisical identity pair), and TraefikEndpoint for the
+// dashboard, which shares both. Deployments below are hand-written — see the
+// composite's own comment for why workloads stay out of it.
+//
+// The materialized `mem0-secrets` Secret holds OPENAI_API_KEY, JWT_SECRET and
+// ADMIN_API_KEY, which the API Deployment consumes via envFrom.
+const app = TraefikApp({
+  name,
+  host: apiHost,
+  port: apiPort,
+  infisical: {
+    identityId: "ca535f2a-a3f9-42f2-9ffe-3b369e496519",
+    projectSlug: "mem0-wzd-g",
+    secretName: `${name}-secrets`,
   },
 });
+
+export const {
+  namespace,
+  serviceAccount,
+  secret,
+  service,
+  certificate,
+  ingressRoute,
+  ingressRouteHttp,
+} = app;
+
+const labels = app.labels;
+
+const dashboard = TraefikEndpoint({
+  name: dashboardName,
+  host: dashboardHost,
+  port: dashboardPort,
+});
+
+export const dashboardService = dashboard.service;
+export const dashboardCertificate = dashboard.certificate;
+export const dashboardIngressRoute = dashboard.ingressRoute;
+export const dashboardIngressRouteHttp = dashboard.ingressRouteHttp;
+
+const dashboardLabels = dashboard.labels;
 
 // Postgres backend. Holds both app state (users, request logs, memory history
 // rows) AND the pgvector-backed memory embeddings — the upstream mem0 server
@@ -207,15 +196,6 @@ export const deployment = new Deployment({
   },
 });
 
-export const service = new Service({
-  metadata: { name, labels },
-  spec: {
-    type: "ClusterIP",
-    selector: labels,
-    ports: [{ name: "http", port: apiPort, targetPort: "http" }],
-  },
-});
-
 export const dashboardDeployment = new Deployment({
   metadata: { name: dashboardName, labels: dashboardLabels },
   spec: {
@@ -268,103 +248,5 @@ export const dashboardDeployment = new Deployment({
         ],
       },
     },
-  },
-});
-
-export const dashboardService = new Service({
-  metadata: { name: dashboardName, labels: dashboardLabels },
-  spec: {
-    type: "ClusterIP",
-    selector: dashboardLabels,
-    ports: [{ name: "http", port: dashboardPort, targetPort: "http" }],
-  },
-});
-
-export const certificate = new Certificate({
-  metadata: { name: `${name}-tls` },
-  spec: {
-    secretName: `${name}-tls`,
-    issuerRef: { name: "letsencrypt-production", kind: "ClusterIssuer" },
-    dnsNames: [apiHost],
-  },
-});
-
-export const dashboardCertificate = new Certificate({
-  metadata: { name: `${dashboardName}-tls` },
-  spec: {
-    secretName: `${dashboardName}-tls`,
-    issuerRef: { name: "letsencrypt-production", kind: "ClusterIssuer" },
-    dnsNames: [dashboardHost],
-  },
-});
-
-// The redirect-https Middleware lives in the default namespace; these are
-// spec-level cross-namespace references, not metadata.namespace.
-const redirectToHttps = [{ name: "redirect-https", namespace: "default" }];
-
-// Public mem0 API at https://mem0.inevitable.fyi. Auth is mem0's own JWT /
-// X-API-Key — exposing on the open internet is safe because every protected
-// route checks the Authorization header before doing anything, and AUTH_DISABLED
-// is explicitly false on the Deployment.
-export const ingressRoute = new IngressRoute({
-  metadata: { name },
-  spec: {
-    entryPoints: ["websecure"],
-    routes: [
-      {
-        match: `Host(\`${apiHost}\`)`,
-        kind: "Rule",
-        services: [{ name, port: apiPort }],
-      },
-    ],
-    tls: { secretName: `${name}-tls` },
-  },
-});
-
-export const ingressRouteHttp = new IngressRoute({
-  metadata: { name: `${name}-http` },
-  spec: {
-    entryPoints: ["web"],
-    routes: [
-      {
-        match: `Host(\`${apiHost}\`)`,
-        kind: "Rule",
-        middlewares: redirectToHttps,
-        services: [{ name, port: apiPort }],
-      },
-    ],
-  },
-});
-
-// Public dashboard at https://mem0-ui.inevitable.fyi. Same auth story — the
-// dashboard issues login + register against the API and stores a JWT in browser
-// storage. Unauthenticated traffic only sees the setup wizard / login screens.
-export const dashboardIngressRoute = new IngressRoute({
-  metadata: { name: dashboardName },
-  spec: {
-    entryPoints: ["websecure"],
-    routes: [
-      {
-        match: `Host(\`${dashboardHost}\`)`,
-        kind: "Rule",
-        services: [{ name: dashboardName, port: dashboardPort }],
-      },
-    ],
-    tls: { secretName: `${dashboardName}-tls` },
-  },
-});
-
-export const dashboardIngressRouteHttp = new IngressRoute({
-  metadata: { name: `${dashboardName}-http` },
-  spec: {
-    entryPoints: ["web"],
-    routes: [
-      {
-        match: `Host(\`${dashboardHost}\`)`,
-        kind: "Rule",
-        middlewares: redirectToHttps,
-        services: [{ name: dashboardName, port: dashboardPort }],
-      },
-    ],
   },
 });

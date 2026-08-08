@@ -4,30 +4,6 @@ metadata:
   name: ntfy
 
 ---
-apiVersion: secrets.infisical.com/v1alpha1
-kind: InfisicalSecret
-metadata:
-  name: ntfy-auth
-spec:
-  hostAPI: http://infisical.infisical.svc.cluster.local:8080
-  resyncInterval: 60
-  authentication:
-    kubernetesAuth:
-      identityId: '30e98c30-2e34-426c-ad22-2e3e5d734e88'
-      autoCreateServiceAccountToken: true
-      serviceAccountRef:
-        name: ntfy-infisical
-        namespace: ntfy
-      secretsScope:
-        projectSlug: ntfy-h-f-bm
-        envSlug: prod
-        secretsPath: /
-  managedSecretReference:
-    secretName: ntfy-auth
-    secretNamespace: ntfy
-    creationPolicy: Orphan
-
----
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -152,6 +128,30 @@ spec:
       services:
         - name: ntfy
           port: 80
+
+---
+apiVersion: secrets.infisical.com/v1alpha1
+kind: InfisicalSecret
+metadata:
+  name: ntfy-auth
+spec:
+  hostAPI: http://infisical.infisical.svc.cluster.local:8080
+  resyncInterval: 60
+  authentication:
+    kubernetesAuth:
+      identityId: '30e98c30-2e34-426c-ad22-2e3e5d734e88'
+      autoCreateServiceAccountToken: true
+      serviceAccountRef:
+        name: ntfy-infisical
+        namespace: ntfy
+      secretsScope:
+        projectSlug: ntfy-h-f-bm
+        envSlug: prod
+        secretsPath: /
+  managedSecretReference:
+    secretName: ntfy-auth
+    secretNamespace: ntfy
+    creationPolicy: Orphan
 
 ---
 apiVersion: v1
