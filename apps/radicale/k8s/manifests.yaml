@@ -1,0 +1,210 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: radicale
+
+---
+apiVersion: secrets.infisical.com/v1alpha1
+kind: InfisicalSecret
+metadata:
+  name: radicale-auth
+spec:
+  hostAPI: http://infisical.infisical.svc.cluster.local:8080
+  resyncInterval: 60
+  authentication:
+    kubernetesAuth:
+      identityId: '72e0768b-bcc4-4bc4-a495-48bcc7b4145d'
+      autoCreateServiceAccountToken: true
+      serviceAccountRef:
+        name: radicale-infisical
+        namespace: radicale
+      secretsScope:
+        projectSlug: radicale-tx-mo
+        envSlug: prod
+        secretsPath: /
+  managedSecretReference:
+    secretName: radicale-auth
+    secretNamespace: radicale
+    creationPolicy: Orphan
+
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: radicale-tls
+spec:
+  secretName: radicale-tls
+  issuerRef:
+    name: letsencrypt-production
+    kind: ClusterIssuer
+  dnsNames:
+    - dav.inevitable.fyi
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: radicale-config
+data:
+  config: |
+    [server]
+    hosts = 0.0.0.0:5232
+    
+    [auth]
+    type = htpasswd
+    htpasswd_filename = /etc/radicale/users
+    htpasswd_encryption = bcrypt
+    # bcrypt verification is deliberately slow (~100ms); CalDAV clients fire
+    # bursts of requests, so cache successful logins in-process instead of
+    # re-hashing on every PROPFIND.
+    cache_logins = true
+    
+    [storage]
+    filesystem_folder = /data/collections
+    
+    [logging]
+    level = info
+
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: radicale-data
+spec:
+  storageClassName: longhorn
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: '2Gi'
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: radicale
+  labels:
+    app: radicale
+  annotations:
+    secrets.infisical.com/auto-reload: 'true'
+    configmap.reloader.stakater.com/reload: radicale-config
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: radicale
+  template:
+    metadata:
+      labels:
+        app: radicale
+    spec:
+      securityContext:
+        runAsUser: 2999
+        runAsGroup: 2999
+        fsGroup: 2999
+        runAsNonRoot: true
+      containers:
+        - name: radicale
+          image: tomsquest/docker-radicale:3.7.6.0
+          ports:
+            - containerPort: 5232
+              name: http
+          volumeMounts:
+            - name: config
+              mountPath: /config
+              readOnly: true
+            - name: users
+              mountPath: /etc/radicale
+              readOnly: true
+            - name: data
+              mountPath: /data
+          resources:
+            requests:
+              cpu: '25m'
+              memory: '64Mi'
+            limits:
+              memory: '256Mi'
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 30
+      volumes:
+        - name: config
+          configMap:
+            name: radicale-config
+        - name: users
+          secret:
+            secretName: radicale-auth
+            items:
+              - key: HTPASSWD_USERS
+                path: users
+        - name: data
+          persistentVolumeClaim:
+            claimName: radicale-data
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: radicale
+spec:
+  entryPoints:
+    - websecure
+  routes:
+    - match: Host(`dav.inevitable.fyi`)
+      kind: Rule
+      services:
+        - name: radicale
+          port: 80
+  tls:
+    secretName: radicale-tls
+
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: radicale-http
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`dav.inevitable.fyi`)
+      kind: Rule
+      middlewares:
+        - name: redirect-https
+          namespace: default
+      services:
+        - name: radicale
+          port: 80
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: radicale
+  labels:
+    app: radicale
+spec:
+  type: ClusterIP
+  selector:
+    app: radicale
+  ports:
+    - name: http
+      port: 80
+      targetPort: http
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: radicale-infisical
