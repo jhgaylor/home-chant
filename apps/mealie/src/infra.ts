@@ -6,9 +6,10 @@ import {
   Probe,
 } from "@intentius/chant-lexicon-k8s";
 import { TraefikApp } from "@home-chant/traefik-app";
+import { params } from "@intentius/chant/params";
 
 const name = "mealie";
-const hostname = "mealie.inevitable.fyi";
+const hostname = `${name}.${params.domain}`;
 const port = 9000;
 
 // Namespace, the Infisical identity pair, Service, Certificate and the
@@ -21,6 +22,7 @@ const app = TraefikApp({
   name,
   host: hostname,
   port,
+  issuer: params.issuer as string,
   infisical: {
     identityId: "150b0c1f-edf2-49c2-9ceb-fba2f009a8b2",
     projectSlug: "mealie-d-qiw",

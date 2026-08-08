@@ -6,9 +6,10 @@ import {
   Probe,
 } from "@intentius/chant-lexicon-k8s";
 import { TraefikApp } from "@home-chant/traefik-app";
+import { params } from "@intentius/chant/params";
 
 const name = "radicale";
-const hostname = "dav.inevitable.fyi";
+const hostname = `dav.${params.domain}`;
 
 // Namespace, the Infisical identity pair, Service, Certificate and the
 // IngressRoute redirect pair. The Deployment below is hand-written — see the
@@ -23,6 +24,7 @@ const app = TraefikApp({
   name,
   host: hostname,
   port: 80,
+  issuer: params.issuer as string,
   infisical: {
     identityId: "72e0768b-bcc4-4bc4-a495-48bcc7b4145d",
     projectSlug: "radicale-tx-mo",

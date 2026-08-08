@@ -1,8 +1,9 @@
 import { Cluster, Container, Deployment, Probe } from "@intentius/chant-lexicon-k8s";
 import { TraefikApp } from "@home-chant/traefik-app";
+import { params } from "@intentius/chant/params";
 
 const name = "calcom";
-const hostname = "cal.jakegaylor.com";
+const hostname = `cal.${params.domain}`;
 const port = 3000;
 
 // Namespace, the Infisical identity pair, Service, Certificate and the
@@ -16,6 +17,7 @@ const app = TraefikApp({
   name,
   host: hostname,
   port,
+  issuer: params.issuer as string,
   infisical: {
     identityId: "187477dd-1cf2-4a4d-932e-80495fea4db0",
     projectSlug: "calcom-8kfu",

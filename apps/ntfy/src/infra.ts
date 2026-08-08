@@ -6,9 +6,10 @@ import {
   Probe,
 } from "@intentius/chant-lexicon-k8s";
 import { TraefikApp } from "@home-chant/traefik-app";
+import { params } from "@intentius/chant/params";
 
 const name = "ntfy";
-const hostname = "ntfy.inevitable.fyi";
+const hostname = `${name}.${params.domain}`;
 
 // Namespace, the Infisical identity pair, Service, Certificate and the
 // IngressRoute redirect pair. The Deployment below is hand-written — see the
@@ -20,6 +21,7 @@ const app = TraefikApp({
   name,
   host: hostname,
   port: 80,
+  issuer: params.issuer as string,
   infisical: {
     identityId: "30e98c30-2e34-426c-ad22-2e3e5d734e88",
     projectSlug: "ntfy-h-f-bm",
