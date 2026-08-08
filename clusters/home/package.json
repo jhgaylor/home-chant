@@ -1,0 +1,18 @@
+{
+  "name": "chant-project",
+  "version": "0.41.20",
+  "type": "module",
+  "scripts": {
+    "build": "chant build src --lexicon k8s",
+    "lint": "chant lint src",
+    "dev": "chant build src --lexicon k8s --watch"
+  },
+  "dependencies": {
+    "@home-chant/flux-app": "file:../../packages/flux-app",
+    "@intentius/chant": "^0.41.20",
+    "@intentius/chant-lexicon-k8s": "^0.41.20"
+  },
+  "devDependencies": {
+    "typescript": "^5.0.0"
+  }
+}

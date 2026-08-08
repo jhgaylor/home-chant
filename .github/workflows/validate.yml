@@ -19,7 +19,9 @@ jobs:
       - uses: actions/checkout@v4
       - id: list
         run: |
-          apps=$(find apps -mindepth 1 -maxdepth 1 -type d -exec test -f '{}/package.json' \; -print | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          # apps/* plus clusters/* — the control-plane project (clusters/home)
+          # is a chant project like any other and gets the same lint + drift check.
+          apps=$(find apps clusters -mindepth 1 -maxdepth 1 -type d -exec test -f '{}/package.json' \; -print | jq -R -s -c 'split("\n") | map(select(length > 0))')
           echo "apps=$apps" >> "$GITHUB_OUTPUT"
 
   validate:
@@ -37,13 +39,16 @@ jobs:
         with:
           node-version: 24
 
-      # Apps depend on packages/traefik-app through a `file:` reference, which
-      # npm links rather than copies. Node resolves the link to its real path,
-      # so the composite's own imports resolve from packages/traefik-app —
-      # which needs its dependencies installed there, not just in the app.
-      - name: Install shared composite package
-        working-directory: packages/traefik-app
-        run: npm ci
+      # Projects depend on packages/* through `file:` references, which npm
+      # links rather than copies. Node resolves a link to its real path, so a
+      # composite's own imports resolve from packages/<name> — which needs its
+      # dependencies installed there, not just in the consuming project.
+      - name: Install shared composite packages
+        run: |
+          for pkg in packages/*/; do
+            [ -f "$pkg/package.json" ] || continue
+            (cd "$pkg" && npm ci)
+          done
 
       - name: Install dependencies
         working-directory: ${{ matrix.app }}

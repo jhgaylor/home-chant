@@ -1,0 +1,137 @@
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: home-chant-calcom
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: home-chant-control-plane
+spec:
+  interval: '10m'
+  sourceRef:
+    kind: GitRepository
+    name: home-chant
+  path: ./apps/calcom/k8s
+  targetNamespace: calcom
+  prune: true
+  wait: true
+  dependsOn:
+    - name: cnpg
+    - name: longhorn
+    - name: cert-manager
+    - name: traefik
+    - name: infisical-operator
+
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: home-chant-hello-chant
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: home-chant-control-plane
+spec:
+  interval: '10m'
+  sourceRef:
+    kind: GitRepository
+    name: home-chant
+  path: ./apps/hello-chant/k8s
+  targetNamespace: default
+  prune: true
+  wait: true
+  dependsOn:
+    - name: cert-manager
+    - name: traefik
+
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: home-chant-mealie
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: home-chant-control-plane
+spec:
+  interval: '10m'
+  sourceRef:
+    kind: GitRepository
+    name: home-chant
+  path: ./apps/mealie/k8s
+  targetNamespace: mealie
+  prune: true
+  wait: true
+  dependsOn:
+    - name: cnpg
+    - name: longhorn
+    - name: cert-manager
+    - name: traefik
+    - name: infisical-operator
+
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: home-chant-mem0
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: home-chant-control-plane
+spec:
+  interval: '10m'
+  sourceRef:
+    kind: GitRepository
+    name: home-chant
+  path: ./apps/mem0/k8s
+  targetNamespace: mem0
+  prune: true
+  wait: true
+  dependsOn:
+    - name: cnpg
+    - name: longhorn
+    - name: cert-manager
+    - name: traefik
+    - name: infisical-operator
+
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: home-chant-ntfy
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: home-chant-control-plane
+spec:
+  interval: '10m'
+  sourceRef:
+    kind: GitRepository
+    name: home-chant
+  path: ./apps/ntfy/k8s
+  targetNamespace: ntfy
+  prune: true
+  wait: true
+  dependsOn:
+    - name: longhorn
+    - name: cert-manager
+    - name: traefik
+    - name: infisical-operator
+
+---
+apiVersion: kustomize.toolkit.fluxcd.io/v1
+kind: Kustomization
+metadata:
+  name: home-chant-radicale
+  labels:
+    app.kubernetes.io/managed-by: chant
+    chant.intentius.io/stack: home-chant-control-plane
+spec:
+  interval: '10m'
+  sourceRef:
+    kind: GitRepository
+    name: home-chant
+  path: ./apps/radicale/k8s
+  targetNamespace: radicale
+  prune: true
+  wait: true
+  dependsOn:
+    - name: longhorn
+    - name: cert-manager
+    - name: traefik
+    - name: infisical-operator
